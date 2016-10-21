@@ -1,0 +1,847 @@
+CREATE OR REPLACE PACKAGE BODY PSSSBIGEN_QC_MIG.PKG_PAYOUT_CALC AS
+  FUNCTION next_row(
+  clob_in IN CLOB,
+  len_in IN INTEGER,
+  off_in IN INTEGER) RETURN VARCHAR2 IS
+  BEGIN
+  RETURN DBMS_LOB.SUBSTR(clob_in, len_in, off_in);
+  END next_row;
+  
+   PROCEDURE PAYOUT_CALC (P_PAYOUT_ID IN NUMBER,P_PAYOUT_RUN_ID IN NUMBER, USERID VARCHAR2, P_QA_IND IN VARCHAR2 DEFAULT NULL) IS
+  
+   v_test varchar2(10) ;
+   V_CNT   NUMBER;
+   V_QUERY_TXT   VARCHAR2(32767);
+   V_QUERY_TXT_2   VARCHAR2(32767);
+   V_QUERY_TXT_3 CLOB;
+   V_QUERY_TXT_4 CLOB;
+   V_QUERY_TXT_5 CLOB;
+   V_TEMP CLOB ;
+   V_ELE_TXT    VARCHAR2(50);
+   V_ELE_FLG   VARCHAR2(1);
+   V_INSTR_TXT  VARCHAR2(32767);
+   V_PID   VARCHAR2(50);
+   V_CAT_ID  NUMBER;
+   V_AGG_RESP_ID NUMBER;
+   V_TRGT_TABLE_NM VARCHAR2(75);
+   V_SRC_TABLE_NM VARCHAR2(75);
+   V_MSG_RESP_ID NUMBER;
+   V_DEL_TXT  VARCHAR2(1000);
+   V_UPD_TXT  VARCHAR2(1000);
+   V_SRC_TABLE_UPD varchar2(100);
+
+   stmt  CLOB;
+   dummy VARCHAR2(32767);
+
+   ds_cur    PLS_INTEGER := dbms_sql.open_cursor;
+   sql_table dbms_sql.VARCHAR2S;
+
+    c_buf_len CONSTANT BINARY_INTEGER := 256;
+    v_accum   INTEGER := 0;
+    v_beg     INTEGER := 1;
+    v_end     INTEGER := 256;
+    v_loblen  PLS_INTEGER;
+    v_RetVal  PLS_INTEGER;
+    err_num number ;
+    err_msg varchar2(100);
+
+-- New-------------
+    V_auto_flag CHAR(1) ;
+    v_execution_stage NUMBER ;
+    V_qry_txt Varchar2(2000) ;
+    v_test varchar2(100);
+    v_rule_order NUMBER ;
+    v_from_date Varchar2(60);
+    v_to_Date Varchar2(60);
+    v_payout_id NUMBER ;
+    I PAYOUT_RULE_DETAIL%ROWTYPE ;
+    v_payout_rule_id PAYOUT_RULE_DETAIL.PAYOUT_RULE_ID%TYPE;
+    v_var_query_txt PAYOUT_RULE_DETAIL.QUERY_TXT%TYPE;
+    C_RESPONSE CURSOR_TYPE;
+    v_update_runid Varchar2(2000);
+    v_txt varchar2(2000);
+    v_err_msg payout_run.ERROR_MSG%TYPE;
+    v_run_id NUMBER ;
+    
+     CURSOR C_QUERY_COLUMN(V_PAYOUT_RULE_ID VARCHAR2) IS
+        SELECT COLUMN_ORDER,COLUMN_NAME FROM PAYOUT_RULE_COLUMN_MAP WHERE PAYOUT_RULE_ID=V_PAYOUT_RULE_ID
+        AND PAYOUT_ID=P_PAYOUT_ID ORDER BY COLUMN_ORDER asc;
+        
+    v_count NUMBER ;
+        
+   BEGIN
+   
+  v_count := 0 ;
+   
+           
+   
+    Begin
+    select PAYOUT_ID, IS_AUTO, to_number(NVL(Execution_Stage,'0')), to_char(From_Date,'dd/mm/yyyy'),
+    to_char(To_Date,'dd/mm/yyyy') , ERROR_MSG
+    into v_payout_id, v_auto_flag, v_execution_stage, v_from_date, v_to_date, v_err_msg
+    from payout_run where PAYOUT_RUN_ID = P_PAYOUT_RUN_ID ;
+    Exception When Others Then v_payout_id:=NULL;v_auto_flag:=NULL;v_execution_stage:=NULL;v_from_date:=NULL;v_to_date:=NULL;
+    End ;
+    
+      
+         
+    v_from_Date := 'to_date(''' || v_from_date || ''',''dd/mm/yyyy'')' ;
+    v_to_Date := 'to_date(''' || v_to_date || ''',''dd/mm/yyyy'')' ; 
+    
+  
+    
+    IF v_auto_flag = 'Y' Then 
+
+           
+ 
+    open C_RESPONSE for
+        Select PAYOUT_RULE_ID, QUERY_TXT
+        from payout_rule_detail where PAYOUT_ID = P_PAYOUT_ID and IS_ACTIVE_IND='Y'
+        order by RULE_ORDER ASC ;
+        
+     
+        
+    ELSE
+            
+--C_RESPONSE.close() ;
+        IF lower(P_QA_IND) = 'runcurrent' Then
+      
+            v_rule_order := v_execution_stage ;
+           
+        Elsif v_err_msg is null Then
+           
+            v_rule_order := v_execution_stage +1 ;
+        End If;
+        
+        
+
+    OPEN C_RESPONSE FOR
+        select PAYOUT_RULE_ID, QUERY_TXT from ( Select row_number() over(order by rule_order asc) ROWCNT, PAYOUT_RULE_ID, QUERY_TXT
+        from payout_rule_detail where PAYOUT_ID = V_PAYOUT_ID and IS_ACTIVE_IND='Y' )
+        where ROWCNT = v_rule_order ;
+        
+    Begin
+        v_txt := ' Insert into Payout_Run_History (select SEQ_PAYOUT_RUN_HISTORY_ID.nextVal , 
+                    tmp.* from (select * from payout_run where payout_run_id=' || P_PAYOUT_RUN_ID || ')tmp )' ;
+       
+        
+        
+        EXECUTE IMMEDIATE  v_txt ;
+          
+            
+        EXCEPTION WHEN OTHERS Then
+         DBMS_OUTPUT.PUT_LINE(SQLCODE||','||SQLERRM);            
+    End;                
+    
+    
+    UPDATE PAYOUT_RUN  SET EXECUTION_STAGE = v_rule_order 
+     WHERE PAYOUT_RUN_ID=P_PAYOUT_RUN_ID;
+
+    End If ;   
+
+
+ 
+ LOOP
+    FETCH C_RESPONSE INTO v_payout_rule_id, v_var_query_txt ;
+    EXIT WHEN C_RESPONSE%NOTFOUND;
+   --V_DEL_TXT:='DELETE FROM ';
+   --V_MSG_RESP_ID:=v_payout_rule_id;
+   
+  
+   
+   v_var_query_txt := REPLACE(v_var_query_txt,'<<FromDate>>', v_from_Date) ;
+   v_var_query_txt := REPLACE(v_var_query_txt,'<<ToDate>>', v_to_Date) ;
+   v_var_query_txt := REPLACE(v_var_query_txt,'<<PID>>',P_PAYOUT_RUN_ID) ;
+   
+   
+   
+   SELECT QRY_TABLE_NAME INTO V_TRGT_TABLE_NM 
+   FROM PAYOUT_RULE_DETAIL WHERE PAYOUT_RULE_ID=v_PAYOUT_RULE_ID;
+   
+    IF lower(P_QA_IND) = 'runcurrent'  Then
+         v_txt := 'DELETE FROM ' || V_TRGT_TABLE_NM || ' WHERE PAYOUT_RUN_ID = ' ||  P_PAYOUT_RUN_ID;
+         EXECUTE IMMEDIATE  v_txt ;
+    End If;
+   
+  -- V_DEL_TXT:= V_DEL_TXT||V_TRGT_TABLE_NM||' WHERE PAYOUT_ID='''||P_PAYOUT_PID||'''';
+   
+   --DBMS_OUTPUT.PUT_LINE(V_DEL_TXT);
+  -- EXECUTE IMMEDIATE V_DEL_TXT;
+  -- V_UPD_TXT:='UPDATE '||V_TRGT_TABLE_NM||' SET PAYOUT_ID ='''||P_PAYOUT_PID||''' WHERE PAYOUT_ID IS NULL';
+  -- DBMS_OUTPUT.PUT_LINE(V_UPD_TXT);
+   
+   V_INSTR_TXT:='INSERT INTO '||V_TRGT_TABLE_NM||'(PAYOUT_RUN_ID, PAYOUT_ID, PAYOUT_RULE_ID, ';
+   
+   FOR J IN C_QUERY_COLUMN(v_payout_rule_id) LOOP
+     IF J.COLUMN_ORDER = 1 THEN
+   V_INSTR_TXT:=V_INSTR_TXT||J.COLUMN_NAME;
+     ELSE
+   V_INSTR_TXT:=V_INSTR_TXT||','||J.COLUMN_NAME;
+     END IF;
+   END LOOP;
+   V_INSTR_TXT:=V_INSTR_TXT||')';
+   
+    -- DBMS_OUTPUT.PUT_LINE(V_INSTR_TXT);
+     DBMS_OUTPUT.PUT_LINE('***Before Merging *******');
+     DBMS_OUTPUT.PUT_LINE(V_QUERY_TXT);
+     DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(v_var_query_txt));
+     
+     v_var_query_txt := '(' || v_var_query_txt || ') tmp' ;
+     
+     v_var_query_txt:= 'select ' || P_PAYOUT_RUN_ID || ' , ' || P_PAYOUT_ID || ' , ' || v_payout_rule_id 
+                || ' , tmp.* from ' ||      v_var_query_txt ;
+    
+    
+    IF DBMS_LOB.GETLENGTH(v_var_query_txt)<=32767 THEN
+      V_QUERY_TXT :=DBMS_LOB.SUBSTR(v_var_query_txt,32767,1);
+
+      V_TEMP :=V_INSTR_TXT||' '||V_QUERY_TXT||''||V_QUERY_TXT_2;
+    DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_QUERY_TXT));
+    -- Lines added by Yogesh
+      DBMS_OUTPUT.PUT_LINE('***IN IF LOOP*******');
+    ELSE
+       IF DBMS_LOB.GETLENGTH(v_var_query_txt)<=65534 THEN
+       DBMS_OUTPUT.PUT_LINE('***IN ELSE LOOP*******');
+       V_QUERY_TXT :=DBMS_LOB.SUBSTR(v_var_query_txt,32767,1);
+       V_QUERY_TXT_2:=DBMS_LOB.SUBSTR(v_var_query_txt,32767,32768);
+       V_TEMP :=V_INSTR_TXT||' '||V_QUERY_TXT||''||V_QUERY_TXT_2;
+
+      ELSE
+        DBMS_OUTPUT.PUT_LINE('***IN ELSE LOOP1*******');
+        
+        V_QUERY_TXT_3 :=DBMS_LOB.SUBSTR(v_var_query_txt,32767,1);
+        V_QUERY_TXT_4:=DBMS_LOB.SUBSTR(v_var_query_txt,32767,32768);
+        V_QUERY_TXT_5:=DBMS_LOB.SUBSTR(v_var_query_txt,32767,65535);
+        
+         DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_QUERY_TXT_3));
+         DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_INSTR_TXT));
+         DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_QUERY_TXT));
+         DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_QUERY_TXT_2));
+         DBMS_OUTPUT.PUT_LINE('***IN ELSE LOOP2*******');
+         V_TEMP :=V_INSTR_TXT||' '||V_QUERY_TXT_3||''||V_QUERY_TXT_4||''||V_QUERY_TXT_5;
+
+    END IF;
+
+    END IF;
+
+    DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_QUERY_TXT));
+    DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_QUERY_TXT_2));
+    DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_QUERY_TXT_3));
+    DBMS_OUTPUT.PUT_LINE('***After Merging *******');
+
+
+
+--INSERT INTO TEST_QUERY VALUES(V_TEMP);
+--commit;
+
+
+    IF DBMS_LOB.GETLENGTH(v_var_query_txt)<=65534 THEN
+      
+         v_count := v_count + 1 ;
+         
+      
+
+         insert into tmp_test(ord,txt) values(v_count,V_INSTR_TXT||' '||V_QUERY_TXT||''||V_QUERY_TXT_2) ;
+         commit; 
+         
+         EXECUTE IMMEDIATE V_INSTR_TXT||' '||V_QUERY_TXT||''||V_QUERY_TXT_2;
+         
+         
+
+    ELSE
+
+     DBMS_OUTPUT.PUT_LINE('***After Merging3 *******');
+
+        v_loblen := DBMS_LOB.GETLENGTH(V_INSTR_TXT||' '||V_QUERY_TXT_3||''||V_QUERY_TXT_4||''||V_QUERY_TXT_5);
+        INSERT INTO test
+        (test)
+        VALUES
+        ('Demo block is ' || TO_CHAR(v_loblen) || ' bytes in length');
+        COMMIT;
+
+  LOOP
+    -- Set the length to the remaining size
+    -- if there are < c_buf_len characters remaining.
+    IF v_accum + c_buf_len > v_loblen THEN
+      v_end := v_loblen - v_accum;
+    END IF;
+
+    sql_table(NVL(sql_table.LAST, 0) + 1) :=    next_row(V_INSTR_TXT||' '||V_QUERY_TXT_3||''||V_QUERY_TXT_4||''||V_QUERY_TXT_5, v_end, v_beg);
+
+    v_beg := v_beg + c_BUF_LEN;
+    v_accum := v_accum + v_end;
+
+    IF v_accum >= v_loblen THEN
+      EXIT;
+    END IF;
+  END LOOP;
+
+  -- Parse the pl/sql and execute it
+   dbms_sql.parse(ds_cur, sql_table, sql_table.FIRST, sql_table.LAST,
+  FALSE, dbms_sql.NATIVE);
+
+  v_RetVal := dbms_sql.execute(ds_cur);
+
+ dbms_sql.close_cursor(ds_cur);
+       DBMS_OUTPUT.PUT_LINE('***After Merging1 *******');
+
+  V_DEL_TXT:='';
+  V_INSTR_TXT:='';
+  V_QUERY_TXT:='';
+ END IF;
+
+  V_QUERY_TXT_2:='';
+  V_QUERY_TXT_3:='';
+  V_QUERY_TXT_4:='';
+  V_QUERY_TXT_5:='';
+  
+  
+ END LOOP;
+
+  
+  
+ IF V_AUTO_FLAG = 'Y' Then
+
+     UPDATE PAYOUT_RUN  SET PAYOUT_STATUS=2,IS_DELETED_IND='N',END_TIME = SYSDATE WHERE PAYOUT_RUN_ID=P_PAYOUT_RUN_ID;
+     COMMIT;
+     
+ Else
+ 
+    UPDATE PAYOUT_RUN  SET EXECUTION_STAGE = v_rule_order, PAYOUT_STATUS=2,IS_DELETED_IND='N',END_TIME = SYSDATE
+     WHERE PAYOUT_RUN_ID=P_PAYOUT_RUN_ID;
+ 
+ End If ;
+ 
+ EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+            ROLLBACK;
+            DBMS_OUTPUT.PUT_LINE('No data found');
+ WHEN OTHERS THEN
+            ROLLBACK;
+     err_Num:=sqlcode;
+        err_msg:= substr(sqlerrm, 1, 100);
+    UPDATE PAYOUT_RUN  SET PAYOUT_STATUS=4,
+    ERROR_MSG='Error occured while executing in PROC with response id='||V_MSG_RESP_ID||' ' ||err_Num||','||err_msg ,END_TIME = SYSDATE 
+    WHERE PAYOUT_RUN_ID=P_PAYOUT_RUN_ID;
+     commit;
+    DBMS_OUTPUT.PUT_LINE(SQLCODE||','||SQLERRM);
+ END PAYOUT_CALC;
+ 
+ 
+ PROCEDURE LEDGER_CALC
+        (P_PAYOUT_ID NUMBER,
+         P_PAYOUT_RUN_ID VARCHAR2,
+         P_USER_ID VARCHAR2)
+IS
+v_cms_ledger_id NUMBER ;
+v_tmp_table_nm Varchar2(100);
+v_sql Varchar2(2000);
+v_rule_id NUMBER ;
+
+Type cursor_type is ref cursor ;
+incent_cursor cursor_type ;  
+v_entity_column varchar2(100);
+v_amount_column varchar2(100); 
+v_credit_amount NUMBER;
+v_debit_amount NUMBER ; 
+v_reeval_ind CHAR(1); 
+v_reeval_runid NUMBER;
+v_prev_credit NUMBER ;
+v_prev_debit NUMBER ;
+v_qry Varchar2(1000);
+v_postype Varchar2(100);
+v_premiumtype Varchar2(100);
+v_insert Varchar2(10) ;
+v_pmt_type Varchar2(30) ;
+
+CURSOR P_CUR is
+    select pl.PAYOUT_ID, pl.PAYOUT_RULE_ID, pl.ENTITY_COLUMN_ID, pl.AMOUNT_POINT_COLUMN_ID, 
+    pl.LEDGER_TYPE, pl.REMARKS, pl.VOUCHER_TYPE, pc.COLUMN_NAME as Entity_Column, 
+    pc1.COLUMN_NAME as Amount_Column, pl.PAYOUT_LEDGER_ID
+    from payout_ledger pl inner join payout_rule_column_map pc on pl.ENTITY_COLUMN_ID = pc.RULE_COLUMN_MAP_ID 
+    inner join  payout_rule_column_map pc1 on pc1.RULE_COLUMN_MAP_ID = pl.AMOUNT_POINT_COLUMN_ID 
+    where pl.payout_id=P_PAYOUT_ID and pl.IS_DELETED_IND='N';
+    
+
+BEGIN
+
+insert into tmp_test(ORD,TXT) values(1,'Ledger');
+commit;
+
+v_insert:= 'true' ;
+
+select REEVAL_IND into v_reeval_ind from payout_run where payout_run_id = P_PAYOUT_RUN_ID; 
+
+select  PAYOUT_RULE_ID into v_rule_id from payout_ledger where payout_id=P_PAYOUT_ID and rownum=1 ;
+
+
+select QRY_TABLE_NAME into v_tmp_table_nm from payout_rule_detail where PAYOUT_RULE_ID = v_rule_id ;
+
+IF v_reeval_ind = 'Y' THEN
+    
+Begin
+    select PAYOUT_RUN_ID into v_reeval_runid 
+    from  PAYOUT_REEVALUATION where PAYOUT_REEVAL_RUN_ID = P_PAYOUT_RUN_ID ;
+    Exception When Others Then 
+     raise_application_error(-20001,'REEVAL Error - '||SQLCODE||' -ERROR- '||SQLERRM);
+End;    
+
+END IF ;
+
+insert into tmp_test(ORD,TXT) values(1,'Ledger');
+commit;
+
+FOR I in P_CUR LOOP
+
+
+--------- Modified on 28/09/15-- Add PosType, Premium Type............................
+
+ 
+ v_qry := ' select pos_type from  ' || v_tmp_table_nm || ' where rownum=1 and Payout_Run_Id = ' ||   P_PAYOUT_RUN_ID ;
+ 
+ Begin
+    EXECUTE IMMEDIATE v_qry into v_postype ;
+    EXCEPTION WHEN OTHERS THEN v_postype := NULL ; 
+ End;
+
+v_sql := 'select ' || I.Entity_Column || ',' || I.Amount_Column ;
+
+IF v_postype is not null Then
+    v_sql := v_sql || ',' || 'POS_TYPE ' ;
+Else
+    v_sql :=  v_sql || ',' || 'NULL as POS_TYPE ' ;    
+End If ;
+
+v_sql := v_sql || ' from ' || v_tmp_table_nm  || ' where Payout_Run_Id = ' ||   P_PAYOUT_RUN_ID ;
+
+insert into tmp_test(ORD,TXT) values(1, v_sql);
+commit;
+
+OPEN incent_cursor for v_sql ;
+
+Loop
+
+    FETCH incent_cursor into v_entity_column, v_amount_column, v_postype ;
+    Exit When incent_cursor%NOTFOUND;
+
+   
+v_insert:= 'true' ;
+
+IF v_reeval_ind = 'Y' THEN
+    
+    Begin
+        select CREDIT_AMOUNT, DEBIT_AMOUNT 
+        into v_prev_credit, v_prev_debit
+        from PAYOUT_CMS_LEDGER where PAYOUT_RUN_ID = v_reeval_runid and  ENTITY_CODE = v_entity_column
+        and ENTITY_IDENTIFIER = I.Entity_Column and VOUCHER_TYPE=I.VOUCHER_TYPE ;
+    EXCEPTION WHEN OTHERS THEN
+        v_prev_credit:= 0 ; v_prev_debit:= 0 ;
+    End;
+    
+    insert into tmp_test(ORD,TXT) values(1, v_reeval_runid ||',' || v_entity_column ||',' || I.Entity_Column || ','|| I.VOUCHER_TYPE);
+    insert into tmp_test(ORD,TXT) values(2,'Prev:' || v_prev_credit ||',Db:' || v_prev_debit);
+    commit;
+   -- select * from sma
+    If lower(I.LEDGER_TYPE) = 'add' Then
+        
+        v_credit_amount := ( to_number(v_amount_column) - to_number(v_prev_credit) );
+        
+       
+        If v_credit_amount > 0 Then
+            
+            v_credit_amount := v_credit_amount ;
+            v_debit_amount  := NULL ;
+            
+        Else
+        
+           
+            v_debit_amount  := v_credit_amount ;
+            v_credit_amount := NULL ;
+            
+        ENd If;  
+          
+        
+    Else
+    
+        v_debit_amount  := NULL;
+        v_credit_amount := NULL ;
+        v_insert := 'false' ;
+        
+    End If;
+    
+    insert into tmp_test(ORD,TXT) values(2,'CR:' || v_credit_amount ||',D:' || v_debit_amount);
+    commit;
+    
+ELSE
+
+    If lower(I.LEDGER_TYPE) = 'add' Then
+        IF to_number(v_amount_column) > 0 Then
+            v_credit_amount := to_number(v_amount_column);
+            v_debit_amount  := NULL ;
+        ELSE
+            v_debit_amount  := to_number(v_amount_column);
+            v_credit_amount := NULL ;
+        
+        END IF ;
+    Else
+        IF to_number(v_amount_column) > 0 Then
+            v_debit_amount  := to_number(v_amount_column);
+            v_credit_amount := NULL ;
+        ELSE
+            v_debit_amount  := NULL ;
+            v_credit_amount := to_number(v_amount_column);
+        END IF;
+    End If;
+
+END IF ;
+
+IF  to_number(v_amount_column) = 0 Then
+
+    v_insert := 'false' ;
+    
+End If ;    
+
+      IF v_insert = 'true' Then
+       
+              Insert into Payout_Cms_Ledger
+                (PAYOUT_CMS_LEDGER_ID, ENTITY_CODE, ENTITY_IDENTIFIER, PAYOUT_RUN_ID, REMARKS_TXT, VOUCHER_TYPE, 
+                CREDIT_AMOUNT, 
+                DEBIT_AMOUNT, LST_UPDT_USR_ID, LST_UPDT_DTM,PAYOUT_LEDGER_ID,CREATED_DATE, REEVAL_IND,PREV_PAYOUT_RUN_ID,
+                POS_TYPE, PREMIUM_TYPE)
+                VALUES
+                (
+                SEQ_PAYOUT_CMS_LEDGER_ID.nextVal,
+                v_entity_column,
+                I.Entity_Column,
+                P_PAYOUT_RUN_ID,
+                I.REMARKS,
+                I.VOUCHER_TYPE,
+                v_credit_amount,
+                v_debit_amount,
+                P_USER_ID,
+                sysdate,
+                I.PAYOUT_LEDGER_ID,
+                SYSDATE,
+                v_reeval_ind,
+                v_reeval_runid,
+                v_postype, 
+                v_premiumtype
+                );
+        
+        End If ;
+
+End Loop;
+
+
+
+END LOOP;
+CLOSE incent_cursor ;
+
+    Update Payout_Run 
+        set Payout_Status = 5 
+        where Payout_Run_Id = P_PAYOUT_RUN_ID ;
+        
+Begin
+select ad.PAYOUT_TYPE into v_pmt_type from Payout_Detail pd inner join Adm_Payout_Type ad on ad.PAYOUT_TYPE_ID = pd.PAYOUT_TYPE_ID
+and pd.PAYOUT_ID = P_PAYOUT_ID ;
+ Exception When No_Data_Found Then v_pmt_type:= NULL ;
+End ;        
+
+If lower(v_pmt_type) = 'payout advice' Then
+
+    Update Payout_Cms_Ledger set Pmt_Adv_Ind = 'Y', Pmt_Adv_Run_Id = P_PAYOUT_RUN_ID Where Pmt_Adv_Ind is null ;
+    
+End If;
+
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+           -- ROLLBACK;
+            DBMS_OUTPUT.PUT_LINE('No data found');
+ WHEN OTHERS THEN
+           -- ROLLBACK;
+    -- err_Num:=sqlcode;
+     --   err_msg:= substr(sqlerrm, 1, 100);
+   
+    DBMS_OUTPUT.PUT_LINE(SQLCODE||','||SQLERRM);
+    raise_application_error(-20001,'An error was encountered - '||SQLCODE||' -ERROR- '||SQLERRM);
+
+END LEDGER_CALC;
+
+
+ PROCEDURE PAYOUT_REEVALUATION (P_PAYOUT_ID IN NUMBER,P_PAYOUT_RUN_ID IN NUMBER, USERID VARCHAR2) IS
+  
+   v_test varchar2(10) ;
+   V_CNT   NUMBER;
+   V_QUERY_TXT   VARCHAR2(32767);
+   V_QUERY_TXT_2   VARCHAR2(32767);
+   V_QUERY_TXT_3 CLOB;
+   V_QUERY_TXT_4 CLOB;
+   V_QUERY_TXT_5 CLOB;
+   V_TEMP CLOB ;
+   V_ELE_TXT    VARCHAR2(50);
+   V_ELE_FLG   VARCHAR2(1);
+   V_INSTR_TXT  VARCHAR2(32767);
+   V_PID   VARCHAR2(50);
+   V_CAT_ID  NUMBER;
+   V_AGG_RESP_ID NUMBER;
+   V_TRGT_TABLE_NM VARCHAR2(75);
+   V_SRC_TABLE_NM VARCHAR2(75);
+   V_MSG_RESP_ID NUMBER;
+   V_DEL_TXT  VARCHAR2(1000);
+   V_UPD_TXT  VARCHAR2(1000);
+   V_SRC_TABLE_UPD varchar2(100);
+
+   stmt  CLOB;
+   dummy VARCHAR2(32767);
+
+   ds_cur    PLS_INTEGER := dbms_sql.open_cursor;
+   sql_table dbms_sql.VARCHAR2S;
+
+    c_buf_len CONSTANT BINARY_INTEGER := 256;
+    v_accum   INTEGER := 0;
+    v_beg     INTEGER := 1;
+    v_end     INTEGER := 256;
+    v_loblen  PLS_INTEGER;
+    v_RetVal  PLS_INTEGER;
+    err_num number ;
+    err_msg varchar2(100);
+
+-- New-------------
+    V_auto_flag CHAR(1) ;
+    v_execution_stage NUMBER ;
+    V_qry_txt Varchar2(2000) ;
+    v_test varchar2(100);
+    v_rule_order NUMBER ;
+    v_from_date Varchar2(60);
+    v_to_Date Varchar2(60);
+    v_payout_id NUMBER ;
+    I PAYOUT_RULE_DETAIL%ROWTYPE ;
+    v_payout_rule_id PAYOUT_RULE_DETAIL.PAYOUT_RULE_ID%TYPE;
+    v_var_query_txt PAYOUT_RULE_DETAIL.QUERY_TXT%TYPE;
+    C_RESPONSE CURSOR_TYPE;
+    v_update_runid Varchar2(2000);
+    v_reeval_rule_id NUMBER;
+    v_col_name Varchar2(100) ;
+    v_col_data varchar2(100) ;
+    v_count NUMBER ;
+    
+    
+     CURSOR C_QUERY_COLUMN(V_PAYOUT_RULE_ID VARCHAR2) IS
+        SELECT COLUMN_ORDER,COLUMN_NAME FROM PAYOUT_RULE_COLUMN_MAP WHERE PAYOUT_RULE_ID=V_PAYOUT_RULE_ID
+        AND PAYOUT_ID=P_PAYOUT_ID ORDER BY COLUMN_ORDER asc;
+        
+    
+        
+   BEGIN
+   
+   
+    Begin
+    select p.PAYOUT_ID,  to_char(p.From_Date,'dd/mm/yyyy'),
+    to_char(p.To_Date,'dd/mm/yyyy') , pe.COLUMNNAME, pe.CONDITIONVALUE, pe.PAYOUT_RULE_ID
+    into v_payout_id, v_from_date, v_to_date, v_col_name, v_col_data, v_reeval_rule_id
+    from payout_run p
+    inner join PAYOUT_REEVALUATION pe on pe.PAYOUT_REEVAL_RUN_ID = p.payout_run_id
+     where p.PAYOUT_RUN_ID = P_PAYOUT_RUN_ID ;
+    Exception When Others Then v_payout_id:=NULL;v_from_date:=NULL;v_to_date:=NULL;
+    End ;
+    
+      
+         
+    v_from_Date := 'to_date(''' || v_from_date || ''',''dd/mm/yyyy'')' ;
+    v_to_Date := 'to_date(''' || v_to_date || ''',''dd/mm/yyyy'')' ;  
+    
+           
+ 
+    open C_RESPONSE for
+        Select PAYOUT_RULE_ID, QUERY_TXT
+        from payout_rule_detail where PAYOUT_ID = P_PAYOUT_ID 
+        and IS_ACTIVE_IND='Y'
+        order by RULE_ORDER ASC ;
+        
+ LOOP
+    FETCH C_RESPONSE INTO v_payout_rule_id, v_var_query_txt ;
+    EXIT WHEN C_RESPONSE%NOTFOUND;
+   --V_DEL_TXT:='DELETE FROM ';
+   --V_MSG_RESP_ID:=v_payout_rule_id;
+   
+  
+   
+   v_var_query_txt := REPLACE(v_var_query_txt,'<<FromDate>>', v_from_Date) ;
+   v_var_query_txt := REPLACE(v_var_query_txt,'<<ToDate>>', v_to_Date) ;
+   v_var_query_txt := REPLACE(v_var_query_txt,'<<PID>>',P_PAYOUT_RUN_ID) ;
+   
+   IF v_reeval_rule_id = v_payout_rule_id THEN
+   
+    v_var_query_txt := 'select * from ( ' ||  v_var_query_txt || ' ) where ' || v_col_name || ' = ''' || v_col_data 
+    || '''';
+   
+   END IF ;
+   
+   v_count := v_count + 1 ;
+   insert into tmp_test(ord,txt) values(v_count, v_var_query_txt) ;
+   commit;
+   
+   
+   SELECT QRY_TABLE_NAME INTO V_TRGT_TABLE_NM 
+   FROM PAYOUT_RULE_DETAIL WHERE PAYOUT_RULE_ID=v_PAYOUT_RULE_ID;
+   
+
+   
+  -- V_DEL_TXT:= V_DEL_TXT||V_TRGT_TABLE_NM||' WHERE PAYOUT_ID='''||P_PAYOUT_PID||'''';
+   
+   --DBMS_OUTPUT.PUT_LINE(V_DEL_TXT);
+  -- EXECUTE IMMEDIATE V_DEL_TXT;
+  -- V_UPD_TXT:='UPDATE '||V_TRGT_TABLE_NM||' SET PAYOUT_ID ='''||P_PAYOUT_PID||''' WHERE PAYOUT_ID IS NULL';
+  -- DBMS_OUTPUT.PUT_LINE(V_UPD_TXT);
+   
+   V_INSTR_TXT:='INSERT INTO '||V_TRGT_TABLE_NM||'(PAYOUT_RUN_ID, PAYOUT_ID, PAYOUT_RULE_ID, ';
+   
+   FOR J IN C_QUERY_COLUMN(v_payout_rule_id) LOOP
+     IF J.COLUMN_ORDER = 1 THEN
+   V_INSTR_TXT:=V_INSTR_TXT||J.COLUMN_NAME;
+     ELSE
+   V_INSTR_TXT:=V_INSTR_TXT||','||J.COLUMN_NAME;
+     END IF;
+   END LOOP;
+   V_INSTR_TXT:=V_INSTR_TXT||')';
+   
+    -- DBMS_OUTPUT.PUT_LINE(V_INSTR_TXT);
+     DBMS_OUTPUT.PUT_LINE('***Before Merging *******');
+     DBMS_OUTPUT.PUT_LINE(V_QUERY_TXT);
+     DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(v_var_query_txt));
+     
+     v_var_query_txt := '(' || v_var_query_txt || ') tmp' ;
+     
+     v_var_query_txt:= 'select ' || P_PAYOUT_RUN_ID || ' , ' || P_PAYOUT_ID || ' , ' || v_payout_rule_id 
+                || ' , tmp.* from ' ||      v_var_query_txt ;
+     
+--    insert into tmp_test values(v_var_query_txt) ;
+--    commit;
+    
+    IF DBMS_LOB.GETLENGTH(v_var_query_txt)<=32767 THEN
+      V_QUERY_TXT :=DBMS_LOB.SUBSTR(v_var_query_txt,32767,1);
+
+      V_TEMP :=V_INSTR_TXT||' '||V_QUERY_TXT||''||V_QUERY_TXT_2;
+    DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_QUERY_TXT));
+    -- Lines added by Yogesh
+      DBMS_OUTPUT.PUT_LINE('***IN IF LOOP*******');
+    ELSE
+       IF DBMS_LOB.GETLENGTH(v_var_query_txt)<=65534 THEN
+       DBMS_OUTPUT.PUT_LINE('***IN ELSE LOOP*******');
+       V_QUERY_TXT :=DBMS_LOB.SUBSTR(v_var_query_txt,32767,1);
+       V_QUERY_TXT_2:=DBMS_LOB.SUBSTR(v_var_query_txt,32767,32768);
+       V_TEMP :=V_INSTR_TXT||' '||V_QUERY_TXT||''||V_QUERY_TXT_2;
+
+      ELSE
+        DBMS_OUTPUT.PUT_LINE('***IN ELSE LOOP1*******');
+        
+        V_QUERY_TXT_3 :=DBMS_LOB.SUBSTR(v_var_query_txt,32767,1);
+        V_QUERY_TXT_4:=DBMS_LOB.SUBSTR(v_var_query_txt,32767,32768);
+        V_QUERY_TXT_5:=DBMS_LOB.SUBSTR(v_var_query_txt,32767,65535);
+        
+         DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_QUERY_TXT_3));
+         DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_INSTR_TXT));
+         DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_QUERY_TXT));
+         DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_QUERY_TXT_2));
+         DBMS_OUTPUT.PUT_LINE('***IN ELSE LOOP2*******');
+         V_TEMP :=V_INSTR_TXT||' '||V_QUERY_TXT_3||''||V_QUERY_TXT_4||''||V_QUERY_TXT_5;
+
+    END IF;
+
+    END IF;
+
+    DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_QUERY_TXT));
+    DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_QUERY_TXT_2));
+    DBMS_OUTPUT.PUT_LINE(DBMS_LOB.GETLENGTH(V_QUERY_TXT_3));
+    DBMS_OUTPUT.PUT_LINE('***After Merging *******');
+
+
+
+--INSERT INTO TEST_QUERY VALUES(V_TEMP);
+--commit;
+
+
+    IF DBMS_LOB.GETLENGTH(v_var_query_txt)<=65534 THEN
+        
+         v_count:= v_count + 1 ;
+         insert into tmp_test(ord,txt) values( v_count, V_INSTR_TXT||' '||V_QUERY_TXT||''||V_QUERY_TXT_2) ;
+         commit; 
+         
+         EXECUTE IMMEDIATE V_INSTR_TXT||' '||V_QUERY_TXT||''||V_QUERY_TXT_2;
+
+    ELSE
+
+     DBMS_OUTPUT.PUT_LINE('***After Merging3 *******');
+
+        v_loblen := DBMS_LOB.GETLENGTH(V_INSTR_TXT||' '||V_QUERY_TXT_3||''||V_QUERY_TXT_4||''||V_QUERY_TXT_5);
+        INSERT INTO test
+        (test)
+        VALUES
+        ('Demo block is ' || TO_CHAR(v_loblen) || ' bytes in length');
+        COMMIT;
+
+  LOOP
+    -- Set the length to the remaining size
+    -- if there are < c_buf_len characters remaining.
+    IF v_accum + c_buf_len > v_loblen THEN
+      v_end := v_loblen - v_accum;
+    END IF;
+
+    sql_table(NVL(sql_table.LAST, 0) + 1) :=    next_row(V_INSTR_TXT||' '||V_QUERY_TXT_3||''||V_QUERY_TXT_4||''||V_QUERY_TXT_5, v_end, v_beg);
+
+    v_beg := v_beg + c_BUF_LEN;
+    v_accum := v_accum + v_end;
+
+    IF v_accum >= v_loblen THEN
+      EXIT;
+    END IF;
+  END LOOP;
+
+  -- Parse the pl/sql and execute it
+   dbms_sql.parse(ds_cur, sql_table, sql_table.FIRST, sql_table.LAST,
+  FALSE, dbms_sql.NATIVE);
+
+  v_RetVal := dbms_sql.execute(ds_cur);
+
+ dbms_sql.close_cursor(ds_cur);
+       DBMS_OUTPUT.PUT_LINE('***After Merging1 *******');
+
+  V_DEL_TXT:='';
+  V_INSTR_TXT:='';
+  V_QUERY_TXT:='';
+ END IF;
+
+  V_QUERY_TXT_2:='';
+  V_QUERY_TXT_3:='';
+  V_QUERY_TXT_4:='';
+  V_QUERY_TXT_5:='';
+  
+  
+ END LOOP;
+
+  
+  
+
+
+     UPDATE PAYOUT_RUN  SET PAYOUT_STATUS=2,IS_DELETED_IND='N',END_TIME = SYSDATE WHERE PAYOUT_RUN_ID=P_PAYOUT_RUN_ID;
+     COMMIT;
+     
+
+ 
+ EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+            ROLLBACK;
+            DBMS_OUTPUT.PUT_LINE('No data found');
+ WHEN OTHERS THEN
+            ROLLBACK;
+     err_Num:=sqlcode;
+        err_msg:= substr(sqlerrm, 1, 100);
+    UPDATE PAYOUT_RUN  SET PAYOUT_STATUS=4,
+    ERROR_MSG='Error occured while executing in PROC with response id='||V_MSG_RESP_ID||' ' ||err_Num||','||err_msg ,END_TIME = SYSDATE 
+    WHERE PAYOUT_RUN_ID=P_PAYOUT_RUN_ID;
+     commit;
+    DBMS_OUTPUT.PUT_LINE(SQLCODE||','||SQLERRM);
+ END PAYOUT_REEVALUATION;
+ 
+END PKG_PAYOUT_CALC;
+/

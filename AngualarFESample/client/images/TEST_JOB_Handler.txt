@@ -1,0 +1,396 @@
+CREATE OR REPLACE PACKAGE BODY PSSSBIGEN_QC_MIG."PKG_JOB_HANDLER" as
+
+
+    PROCEDURE CREATE_NEW_PROCESS(PROCESS_TARGET VARCHAR,SCHEDULE VARCHAR2,NEXT_RUN DATE,
+     p_sp_nm CI_CMS_COMM_RULE_2_SP_MAP.sp_nm%type,
+     p_ref_no in CI_CMS_COMM_RULE_2_SP_MAP.ref_no%type,
+     p_rule_nm in CI_CMS_COMM_RULE_2_SP_MAP.rule_nm%type,
+     target_param in CI_CMS_PROCESS_HANDLES.JOB_PARAM%type
+     ) AS
+     X NUMBER;
+     v_PROCESS_HANDLE_ID  CI_CMS_PROCESS_HANDLES.PROCESS_HANDLE_ID%type;
+    BEGIN
+
+      SYS.DBMS_JOB.SUBMIT
+      ( job       => X 
+       ,what      => PROCESS_TARGET
+       ,next_date => NEXT_RUN
+       --,interval  => 'TRUNC(SYSDATE+1)'
+       ,no_parse  => FALSE
+       ,instance  => 1
+      );
+       
+      v_PROCESS_HANDLE_ID:= SEQ_PROC_HAND_ID.nextval;
+      
+      INSERT INTO CI_CMS_PROCESS_HANDLES
+      (PROCESS_HANDLE_ID,RULE_NM,SP_NM,REF_NO,JOB_ID,LST_UPDT_DTM,LST_UPDT_USERID,IS_DELETED_IND,JOB_PARAM)
+       VALUES
+       (
+        v_PROCESS_HANDLE_ID,
+        p_rule_nm,
+        p_sp_nm,
+        p_ref_no,
+        x,
+        sysdate,
+        'Admin',
+        'N',
+        PROCESS_TARGET
+       );
+      
+    END;
+
+--    PROCEDURE RUN_PROCESS(P_PROCESS_NAME VARCHAR2)AS
+--    X NUMBER;
+--    BEGIN
+--    
+--    SELECT PH.PROCESS_ID INTO X FROM PROCESS_HANDLES PH
+--    WHERE PH.PROCESS_NAME= P_PROCESS_NAME;
+--    
+--    DBMS_JOB.NEXT_DATE(x, SYSDATE+1/1440);
+--    
+--    EXCEPTION WHEN OTHERS THEN 
+--       NULL;
+--    END;
+--    
+--    
+--    PROCEDURE REMOVE_PROCESS(P_PROCESS_NAME VARCHAR2)AS
+--    X NUMBER;
+--    BEGIN
+--    
+--    SELECT PH.PROCESS_ID INTO X FROM PROCESS_HANDLES PH
+--    WHERE PH.PROCESS_NAME= P_PROCESS_NAME;
+--    
+--    SYS.DBMS_JOB.REMOVE(x);
+--    
+--    EXCEPTION WHEN OTHERS THEN 
+--       NULL;
+--    END;
+--    
+    procedure testinvokeproce(process_nm in varchar,
+    frmDate in date,
+    toDate in date)
+    as
+    begin
+        insert into invoketest values(process_nm,sysdate,frmDate,toDate);
+    end;
+--    
+--    PROCEDURE CREATE_PROCESS_AND_RUN(PROCESS_NAME VARCHAR2,PROCESS_TARGET VARCHAR) AS
+--     X NUMBER;
+--    BEGIN
+
+--      SYS.DBMS_JOB.SUBMIT
+--      ( job       => X 
+--       ,what      => PROCESS_TARGET
+--       ,next_date => SYSDATE + 1/1440
+--       --,interval  => 'TRUNC(SYSDATE+1)'
+--       ,no_parse  => FALSE
+--       ,instance  => 1
+--      );
+--       
+--      
+--      INSERT INTO PROCESS_HANDLES VALUES((SELECT MAX(PROCESS_HANDLE_ID)+1 FROM PROCESS_HANDLES),PROCESS_NAME ,x);
+--      
+--    END;
+    
+    procedure run_job(p_ref_no in varchar,p_rule_nm in varchar2,frm_File_rec_dtm in varchar,upto_File_rec_dtm in varchar,msg out clob)
+    AS
+    v_cnt number;
+    v_sp_nm CI_CMS_COMM_RULE_2_SP_MAP.sp_nm%type;
+    v_proc_nm varchar2(500);
+    v_what varchar2(500);
+    v_target varchar2(500);
+    x number;
+    
+    BEGIN
+        v_cnt:=0;
+        if(p_ref_no is null or p_rule_nm is null ) then
+            msg:= 'Ref No. or Rule Name is blank';
+        else
+            select count(SP_NM) into v_cnt from CI_CMS_COMM_RULE_2_SP_MAP map  where map.RULE_NM = p_rule_nm and map.REF_NO = p_ref_no and map.IS_DELETED_IND = 'N' and map.sp_nm is not null;
+            if(v_cnt > 0 ) then
+            
+                select map.sp_nm into v_sp_nm from CI_CMS_COMM_RULE_2_SP_MAP map 
+                where map.RULE_NM = p_rule_nm and map.REF_NO = p_ref_no and map.IS_DELETED_IND = 'N' and map.sp_nm is not null;
+                
+                v_proc_nm:= ''''||p_rule_nm||'';
+                v_what := v_sp_nm||'('||v_proc_nm||''',to_date('''||frm_File_rec_dtm||''',''dd/mm/yyyy''),to_date('''||upto_File_rec_dtm||''',''dd/mm/yyyy''));';
+                --v_target := v_sp_nm||'('''||v_proc_nm||''''',to_date('''''||frm_File_rec_dtm||''''',''''dd/mm/yyyy''''),to_date('''''||upto_File_rec_dtm||''''',''''dd/mm/yyyy''''));';
+                v_target := v_sp_nm||'('||v_proc_nm||''',to_date('''||frm_File_rec_dtm||''',''dd/mm/yyyy''),to_date('''||upto_File_rec_dtm||''',''dd/mm/yyyy''));';
+                dbms_output.put_line(v_target);
+                
+                --CREATE_NEW_PROCESS(p_ref_no||'_'||p_rule_nm||'_'||v_sp_nm,v_what,null,SYSDATE + 1/1440);
+                CREATE_NEW_PROCESS(v_what,null,SYSDATE + 1/1440,
+                v_sp_nm,
+                p_ref_no,
+                p_rule_nm,
+                v_target
+                );
+                
+--                SYS.DBMS_JOB.SUBMIT
+--                  ( job       => X 
+--                   ,what      => 'PKG_JOB_HANDLER.testinvokeproce('||v_proc_nm||''',to_date('''||frm_File_rec_dtm||''',''dd/mm/yyyy''),to_date('''||upto_File_rec_dtm||''',''dd/mm/yyyy''));'
+--                   ,next_date => SYSDATE + 1/1440
+--                   --,interval  => 'TRUNC(SYSDATE+1)'
+--                   ,no_parse  => FALSE
+--                   ,instance  => 1
+--                  );
+--               INSERT INTO PROCESS_HANDLES VALUES((SELECT MAX(PROCESS_HANDLE_ID)+1 FROM PROCESS_HANDLES),v_proc_nm ,x);
+--      
+                msg:= 'Process will start in 60 Seconds';
+                
+            else
+                msg:= 'No mapping stored procedure name found .';
+            end if;
+        end if;
+   -- exception when others then
+   --     msg:= 'Error occured while intiating the process'|| SQLERRM;
+        
+    end;
+    
+    
+--    procedure commission_run_handler(p_ref_no in varchar,
+--    p_rule_nm in varchar2,
+--    frm_File_rec_dtm in varchar,
+--    upto_File_rec_dtm in varchar,
+--    p_PROCESS_HANDLE_ID in CI_CMS_PROCESS_HANDLES.PROCESS_HANDLE_ID%type )
+--    as
+--     v_sp_nm CI_CMS_COMM_RULE_2_SP_MAP.sp_nm%type,
+--     v_ref_no in CI_CMS_COMM_RULE_2_SP_MAP.ref_no%type,
+--     v_rule_nm in CI_CMS_COMM_RULE_2_SP_MAP.rule_nm%type
+--    begin
+--      
+--        begin
+--            select CI_CMS_PROCESS_HANDLES
+--        exception when others then
+--            null;
+--        end;  
+--        insert into invoketest values(process_nm,sysdate,frmDate,toDate);
+--    end;
+
+--    
+--procedure test
+--as 
+--begin
+--   insert into invoketest values('process_nm',sysdate,sysdate,sysdate);
+--end;
+procedure run_payout_now(payout_id in number,payout_run_id in number,user_id in varchar,proc_name in varchar default null)
+    AS
+    p_ref_no varchar2(500);
+    v_sp_nm varchar2(500);
+    v_proc_nm varchar2(500);
+    v_what varchar2(500);
+    v_target varchar2(500);
+    x number;
+    p_rule_nm varchar2(500);
+    
+    BEGIN
+       
+    IF proc_name is not null then
+    
+        v_sp_nm := proc_name ;
+        
+    ELSE
+    
+        v_sp_nm:= 'PKG_PAYOUT_CALC.payout_calc';
+        
+    End If;   
+       
+        
+        p_rule_nm := 'PAYOUT';
+        
+        p_ref_no := payout_run_id;
+        
+        v_what := v_sp_nm||'('''||payout_id||''','''||payout_run_id||''','''||user_id||''');';
+        --v_target := v_sp_nm||'('''||v_proc_nm||''''',to_date('''''||frm_File_rec_dtm||''''',''''dd/mm/yyyy''''),to_date('''''||upto_File_rec_dtm||''''',''''dd/mm/yyyy''''));';
+        v_target := v_sp_nm||'('''||payout_id||''','''||payout_run_id||''','''||user_id||''');';
+        
+        dbms_output.put_line(v_target);      
+        
+        --CREATE_NEW_PROCESS(p_ref_no||'_'||p_rule_nm||'_'||v_sp_nm,v_what,null,SYSDATE + 1/1440);
+        CREATE_NEW_PROCESS(v_what,null,SYSDATE + 1/1440,
+        v_sp_nm,
+        p_ref_no,
+        p_rule_nm,
+        v_target
+        );
+                
+   -- exception when others then
+   --     msg:= 'Error occured while intiating the process'|| SQLERRM;
+        
+    end;
+  procedure reschedule_payout(payout_id in number,p_payout_run_id in number,user_id in varchar,rescheduleInd in varchar)
+    AS
+    v_jobid number;
+    v_reval varchar2(1) ;
+    v_spname varchar2(300);
+    begin
+    select jobid,REEVAL_IND into v_jobid,v_reval from  payout_run where PAYOUT_RUN_ID=p_payout_run_id;
+    BEGIN 
+    SYS.DBMS_JOB.REMOVE(v_jobid);
+    commit;
+    END;
+    
+    IF v_reval is not null and v_reval = 'Y' Then
+        v_spname := 'PKG_PAYOUT_CALC.PAYOUT_REEVALUATION' ;
+    ELSE
+        v_spname := 'PKG_PAYOUT_CALC.PAYOUT_CALC' ;
+    END IF;
+            if(rescheduleInd='Y')then 
+            run_payout_later(payout_id,p_payout_run_id,user_id,v_spname);
+            end if;
+    
+    end;
+ procedure run_payout_later(payout_id in number,payout_run_id in number,user_id in varchar,proc_name in varchar default null)
+    AS
+    p_ref_no varchar2(500);
+    v_sp_nm varchar2(500);
+    v_proc_nm varchar2(500);
+    v_what varchar2(500);
+    v_target varchar2(500);
+    x number;
+    p_rule_nm varchar2(500);
+    v_date_of_run date;
+    v_prun NUMBER ;
+    
+    BEGIN
+        IF proc_name is not null Then
+        
+            v_sp_nm:= proc_name ;    
+        
+        Else
+        
+            v_sp_nm:= 'PKG_PAYOUT_CALC.PAYOUT_CALC';
+            
+        End If;
+        
+        p_rule_nm := 'PAYOUT';
+        
+        p_ref_no := payout_run_id;
+        
+        v_prun := payout_run_id;
+        
+        v_what := v_sp_nm||'('''||payout_id||''','''||payout_run_id||''','''||user_id||''');';
+        --v_target := v_sp_nm||'('''||v_proc_nm||''''',to_date('''''||frm_File_rec_dtm||''''',''''dd/mm/yyyy''''),to_date('''''||upto_File_rec_dtm||''''',''''dd/mm/yyyy''''));';
+        v_target := v_sp_nm||'('''||payout_id||''','''||payout_run_id||''','''||user_id||''');';
+        
+        select to_date(to_char(SCHEDULE_DATE_TIME,'dd/mm/YYYY HH:MI:SS AM'),'dd/mm/YYYY HH:MI:SS AM') 
+        into v_date_of_run 
+        from PAYOUT_RUN 
+        where PAYOUT_RUN_ID = v_prun ; 
+        
+                                
+        insert into tmp_nsdl(EXP_IMP_NM) values (v_date_of_run) ;
+        commit;
+                                            
+        dbms_output.put_line(payout_run_id || ',' || v_prun);      
+        
+        --CREATE_NEW_PROCESS(p_ref_no||'_'||p_rule_nm||'_'||v_sp_nm,v_what,null,SYSDATE + 1/1440);
+        CREATE_NEW_PROCESS(v_what,null,v_date_of_run,
+        v_sp_nm,
+        p_ref_no,
+        p_rule_nm,
+        v_target
+        );
+                
+   -- exception when others then
+   --     msg:= 'Error occured while intiating the process'|| SQLERRM;
+        
+    end;
+    
+    
+    procedure run_exim_pai(P_CONFIG_NAME IN VARCHAR2, P_PROCESSID IN NUMBER, P_CORRECTION_ID IN NUMBER)
+    AS
+    p_ref_no varchar2(500);
+    v_sp_nm varchar2(500);
+    v_proc_nm varchar2(500);
+    v_what varchar2(500);
+    v_target varchar2(500);
+    x number;
+    p_rule_nm varchar2(500);
+    
+    BEGIN
+       
+
+
+        v_sp_nm:= 'PKG_SBIG_PAI_UPLOAD.prUploadPAIData';
+        
+    
+
+
+        
+        p_rule_nm := 'EXIM';
+        
+        p_ref_no := P_PROCESSID ;
+        
+        v_what := v_sp_nm||'('''||P_PROCESSID ||''','''||P_CORRECTION_ID ||''');';
+        --v_target := v_sp_nm||'('''||v_proc_nm||''''',to_date('''''||frm_File_rec_dtm||''''',''''dd/mm/yyyy''''),to_date('''''||upto_File_rec_dtm||''''',''''dd/mm/yyyy''''));';
+        v_target :=v_sp_nm||'('''||P_PROCESSID ||''','''||P_CORRECTION_ID ||''');';
+        
+        dbms_output.put_line(v_target);  
+   
+        
+        --CREATE_NEW_PROCESS(p_ref_no||'_'||p_rule_nm||'_'||v_sp_nm,v_what,null,SYSDATE + 1/1440);
+        CREATE_NEW_PROCESS(v_what,null,SYSDATE + 1/720,
+        v_sp_nm,
+        p_ref_no,
+        p_rule_nm,
+        v_target
+        );
+                
+   -- exception when others then
+   --     msg:= 'Error occured while intiating the process'|| SQLERRM;
+   
+
+
+        
+    end;
+    
+    procedure run_exim_pr(P_CONFIG_NAME IN VARCHAR2, P_PROCESSID IN NUMBER, P_CORRECTION_ID IN NUMBER)
+    AS
+    p_ref_no varchar2(500);
+    v_sp_nm varchar2(500);
+    v_proc_nm varchar2(500);
+    v_what varchar2(500);
+    v_target varchar2(500);
+    x number;
+    p_rule_nm varchar2(500);
+    
+    BEGIN
+       
+
+
+        v_sp_nm:= 'PKG_SBIG_PR_UPLOAD.prUploadData';
+        
+    
+
+
+        
+        p_rule_nm := 'EXIM';
+        
+        p_ref_no := P_PROCESSID ;
+        
+        v_what := v_sp_nm||'('''||P_PROCESSID ||''','''||P_CORRECTION_ID ||''');';
+        --v_target := v_sp_nm||'('''||v_proc_nm||''''',to_date('''''||frm_File_rec_dtm||''''',''''dd/mm/yyyy''''),to_date('''''||upto_File_rec_dtm||''''',''''dd/mm/yyyy''''));';
+        v_target :=v_sp_nm||'('''||P_PROCESSID ||''','''||P_CORRECTION_ID ||''');';
+        
+        dbms_output.put_line(v_target);  
+   
+        
+        --CREATE_NEW_PROCESS(p_ref_no||'_'||p_rule_nm||'_'||v_sp_nm,v_what,null,SYSDATE + 1/1440);
+        CREATE_NEW_PROCESS(v_what,null,SYSDATE + 1/720,
+        v_sp_nm,
+        p_ref_no,
+        p_rule_nm,
+        v_target
+        );
+                
+   -- exception when others then
+   --     msg:= 'Error occured while intiating the process'|| SQLERRM;
+   
+
+
+        
+    end;    
+    
+ end;
+/

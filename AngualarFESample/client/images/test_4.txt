@@ -1,0 +1,879 @@
+<%@ page language="java"%>
+<%@ page buffer="none" %>
+<%@ page language="java" import="com.tpp.components.dashboard.admin.classes.IDBConstants"%>
+<%@ page language="java" import="com.planetsoft.drs.utilities.IHierarchyConstants"%>
+<%@ taglib uri="/WEB-INF/struts-bean.tld" prefix="bean" %>
+<%@ taglib uri="/WEB-INF/struts-html.tld" prefix="html" %>
+<%@ taglib uri="/WEB-INF/struts-logic.tld" prefix="logic" %>
+<%@ taglib uri="/WEB-INF/nested-tags.tld" prefix="nested" %>
+<%@ include file="../tabControlInclude.jsp" %>
+<%@ page language="java" import="com.planetsoft.picp.common.data.dto.PartyContextDTO"%>
+<script language="JavaScript" src="<%=request.getContextPath()%>/jsp/ajaxutils/script/jquery-1.11.1.min.js"></script>
+<%
+    PartyContextDTO objPartyContextDTO = (PartyContextDTO)session.getAttribute("PssPartyContext");
+    String roleName="";
+    if(objPartyContextDTO.getPartyRoleTypeName()!=null && !objPartyContextDTO.getPartyRoleTypeName().equals(""))
+    {
+     roleName=objPartyContextDTO.getPartyRoleTypeName();
+	}
+
+  	String strLoginId = "";
+  	String strDashBoardName = "";
+	if(request.getAttribute(IDBConstants.DASHBOARD_NAME_REQUEST_PARAMETER) != null)
+	{
+		strDashBoardName = (String)request.getAttribute(IDBConstants.DASHBOARD_NAME_REQUEST_PARAMETER);
+	}
+	if(request.getParameter(IDBConstants.DASHBOARD_NAME_REQUEST_PARAMETER) != null)
+	{
+		strDashBoardName = (String)request.getParameter(IDBConstants.DASHBOARD_NAME_REQUEST_PARAMETER);
+	}
+     System.out.println("\n\n :strDashBoardName :"+strDashBoardName );
+     String dbContextID = "";
+	dbContextID=(String)request.getParameter("DBCONTEXTID"); 
+	
+	if(dbContextID==null || dbContextID=="") 
+	{ 
+		dbContextID = (String)request.getAttribute("DBCONTEXTID"); 
+		 
+	}
+	request.setAttribute("DBCONTEXTID",dbContextID);
+%>
+
+<%
+	 String message = "";
+	if(null != request.getAttribute("message"))	{
+	message = (String)request.getAttribute("message");
+	}
+     // For Message handling getting the message from session. 
+     String cnfrmmsg = (String)request.getAttribute("result");	
+     request.setAttribute("result",null);
+
+	// Getting the mode to disable the buttons in save mode.
+	String mode = "";
+	if(null != request.getAttribute("mode"))	{
+	mode = (String)request.getAttribute("mode");
+	}
+	String read = "";
+	if(null != request.getAttribute("read"))	{
+	read = (String)request.getAttribute("read");
+	}
+	 String submitresult=(String)request.getAttribute("submitedMessage");
+	String modeOfSave  ="";
+	 if(request.getAttribute("modeOfSave") != null)
+	  {
+		modeOfSave =(String)request.getAttribute("modeOfSave");
+	  }
+	 String agentname ="";
+	if(session.getAttribute("agentname") != null)
+	  {
+	    agentname =(String)session.getAttribute("agentname");
+	  }
+  String renewalDtm ="";
+	if(request.getAttribute("renewalDtm") != null)
+	  {
+	    renewalDtm =(String)request.getAttribute("renewalDtm");
+	
+	  }
+
+	 String roleTypeID ="";
+	if(session.getAttribute("roleTypeID") != null)
+	  {
+	    roleTypeID =(String)session.getAttribute("roleTypeID");
+	  }
+	   String roleTypeName ="";
+	if(session.getAttribute("roleTypeName") != null)
+	  {
+	    roleTypeName =(String)session.getAttribute("roleTypeName");
+	  }
+	  
+	   String duplicateErrMsg ="";
+	if(request.getAttribute("DuplicateErrMsg") != null)
+	  {
+	    duplicateErrMsg =(String)request.getAttribute("DuplicateErrMsg");
+	  }
+	String lobCount="";
+		if(request.getAttribute("lobCount") != null)
+	  {
+	    lobCount =(String)request.getAttribute("lobCount");
+	  }
+	%>
+<html>
+<head>
+<title>SBI</title>
+<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">
+<META HTTP-EQUIV="Pragma" CONTENT="no-cache">
+</head>
+<link href="<%=request.getContextPath()%>/jsp/pss/css/application_css.css" rel="stylesheet" type="text/css">
+<link type="text/css" rel="stylesheet" href="<%=request.getContextPath()%>/jsp/pss/css/calendar.css">
+<script language="JavaScript" type="text/JavaScript">
+<%@include file="calendar.js" %>
+<%@include file="commonValidations.js" %>
+var screenId = '<%=IHierarchyConstants.HIERARCHY_LICENSE_SCREEN_ID%>';
+var path = '<%=request.getContextPath()%>';
+//to disable the back button in IE
+window.history.forward(1);
+<%
+//code to avoid browser caching - BEGIN
+response.setHeader("Cache-Control","no-store");
+
+response.setHeader("Pragma","no-cache");
+
+response.setDateHeader ("Expires", 0);
+//code to avoid browser caching - END
+%>
+function getDocHeight(doc) {
+  var docHt = 0, sh, oh;
+  if (doc.height) docHt = doc.height;
+  else if (doc.body) {
+    if (doc.body.scrollHeight) docHt = sh = doc.body.scrollHeight;
+    if (doc.body.offsetHeight) docHt = oh = doc.body.offsetHeight;
+	
+    if (sh && oh) 
+		if(sh<150)
+	  {
+		docHt = Math.min(sh, oh);
+	  }else
+	  {
+		  docHt = Math.max(sh, oh);
+	  }
+	  
+  }
+  return docHt;
+}
+function setIframeHeight(iframeName) {
+  var iframeWin = window.frames[iframeName];
+  var iframeEl = document.getElementById? document.getElementById(iframeName): document.all? document.all[iframeName]: null;
+  if ( iframeEl && iframeWin ) {
+    iframeEl.style.height = "auto"; // helps resize (for some) if new doc shorter than previous  
+    var docHt = getDocHeight(iframeWin.document);
+    // need to add to height to be sure it will all show
+    if (docHt) iframeEl.style.height = docHt ;
+  }
+}
+
+// Begin: TabManagement related javascript.
+<%if(null != strSecurityFlag && strSecurityFlag.trim().equals("N")){%>
+function validateForm(layoutId, fieldid, roleCode, actionLayOutId, taborsaveinfo,   		accessPermission, isAccessible) {
+
+	var form = document.forms[0];
+	form.methodName.value = "";
+	form.fieldId.value = fieldid;
+	form.RoleCd.value = roleCode;
+	form.LayOutId.value = layoutId;
+	form.ActionLayOutId.value = actionLayOutId;
+	form.accessPermission.value = accessPermission;
+	form.isAccessible.value = isAccessible;
+	form.action = "<%= request.getContextPath()%>/jsp/tabs_intemediate.jsp?";
+	form.submit();
+
+}
+<%}else{%>
+function newValidateForm(layoutId, fieldId, actionLayOutId, saveType, dbContextId){
+
+	var form = document.forms[0];
+	form.methodName.value = "";
+	form.fieldId.value = fieldId;
+	form.LayOutId.value = layoutId;
+	form.ActionLayOutId.value = actionLayOutId;
+	form.action = "<%= request.getContextPath()%>/jsp/tabs_intemediate.jsp?";
+	form.submit();
+}
+<%}%>
+var isValidEntry=true;
+function change(id, newClass){
+	identity=document.getElementById(id);
+	identity.className=newClass;
+}
+// Begin: TabManagement related javascript.
+
+function chkNumic(obj){
+	var sAlphaNum="0123456789/";
+		var status = false;
+		if(obj.value=="")
+			{
+	 		status=true;
+			}
+			else{
+				for(var i=0;i<obj.value.length;i++){
+					if(sAlphaNum.indexOf(obj.value.charAt(i)) == "-1"){
+					obj.value = obj.value.substring(0,i) + obj.value.substring(i+1, obj.value.length);
+					}
+				}
+			}
+		}
+
+//This method is used to allow only numerics.
+function isAlphaNumic(obj){
+	var sAlphaNum="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/";
+		var status = false;
+		if(obj.value=="")
+			{
+	 		status=true;
+			}
+			else{
+
+				for(var i=0;i<obj.value.length;i++){
+					if(sAlphaNum.indexOf(obj.value.charAt(i)) == "-1"){
+					obj.value = obj.value.substring(0,i) + obj.value.substring(i+1, obj.value.length);
+					}
+				}
+			}
+			
+	}
+
+function fnAddLOBRow(){
+var temp=document.getElementById('lobParamTable');
+if(temp.rows.length!=0){
+var tab = document.getElementById('lobTable');
+if(temp.rows.length<9){
+row = tab.getElementsByTagName('tr')[1];
+row = row.cloneNode(true);
+tab.getElementsByTagName('tbody')[1].appendChild(row);
+row.style.display='block';
+var tab1 = document.getElementById('lobParamTable');
+var count=tab1.rows.length;
+tab1.rows[count-1].cells[3].childNodes[0].value="";
+tab1.rows[count-1].cells[5].childNodes[0].value="";
+var lobType=tab1.rows[count-1].cells[1].childNodes[0];				
+			    lobType.selectedIndex=0;
+var type1=tab1.rows[count-1].cells[7].childNodes[0];			
+			     type1.selectedIndex=1;
+				 tab1.rows[count-1].cells[8].childNodes[0].value="";
+var temp=tab1.rows[count-1].cells[5].childNodes[2]
+				temp.onclick = function () {			
+				displayCalendar(this.parentNode.childNodes[0],'dd/mm/yyyy',this,'','');       };				 
+}
+else{
+alert("LOB Entries shouldn't be more than 9");
+return;
+}
+}
+else{
+var tab = document.getElementById('newLobParamTable');
+if(tab.rows.length<9){
+row = tab.getElementsByTagName('tr')[0];
+row = row.cloneNode(true);
+tab.getElementsByTagName('tbody')[0].appendChild(row);
+row.style.display='block';
+var tab1 = document.getElementById('lobParamTable');
+	if(tab1.rows.length==0){
+	tab1 = document.getElementById('newLobParamTable');
+	}
+	var rowCount=tab1.rows.length;			
+			tab1.rows[rowCount-1].cells[3].childNodes[0].value="";
+			tab1.rows[rowCount-1].cells[5].childNodes[0].value="";
+			var lobType=tab1.rows[rowCount-1].cells[1].childNodes[0];				
+			    lobType.selectedIndex=0;
+var type1=tab1.rows[rowCount-1].cells[7].childNodes[0];			
+			     type1.selectedIndex=1;	
+var temp=tab1.rows[rowCount-1].cells[5].childNodes[2]
+				temp.onclick = function () {			
+				displayCalendar(this.parentNode.childNodes[0],'dd/mm/yyyy',this,'','');       };	
+}	
+else{
+alert("LOB Entries shouldn't be more than 9");
+return;
+}			
+}
+	}
+
+function saveParameter(){
+var mappedColumns="";
+setFieldMappingObject();
+}
+
+function setFieldMappingObject(){
+var lobListObject=[];
+var mode="<%=mode%>";	
+var currentdate = new Date();
+isValidLOBEntry=true;
+isValidNameEntry=true;
+isValidDateEntry=true;
+isValidStatusEntry=true;
+isSingleNameEntry=true;
+var caIdList="";
+	var lobList="";
+	var businessNameList="";
+	var businessDateList="";
+	var businessStatusList="";
+	var mappedColumns = "";	
+	var insertColumns="";
+	var updateColumns="";
+	var lobListUpdate="";
+	var	businessNameListUpdate="";	
+	var	businessDateListUpdate="";
+	var	businessStatusListUpdate="";	
+	var tab = document.getElementById('lobParamTable');
+	if(tab.rows.length==0){
+	tab = document.getElementById('newLobParamTable');
+	}	
+	var flag=false;
+	var count=0;
+	var unchecked=true;	
+	if(tab !=null && tab !=undefined && tab.rows.length>0){	
+		for(var i =0 ; i<tab.rows.length;i++){		
+			if(tab.rows[i] !=null && tab.rows[i] !=undefined && tab.rows[i].cells.length>0)
+			{		
+			var CAId=tab.rows[i].cells[8].childNodes[0];
+			if(CAId.value!=""){			
+			var type=tab.rows[i].cells[1].childNodes[0];				
+			var temp = type.options[type.selectedIndex].value;			
+			var textOftemp1=tab.rows[i].cells[1].childNodes[0].value;
+			var lob=	tab.rows[i].cells[3].childNodes[0].value;			
+			var businessName=tab.rows[i].cells[3].childNodes[0].value;			
+			var type1=tab.rows[i].cells[7].childNodes[0];				
+			var dateOfReg = type1.options[type1.selectedIndex].value;
+			caIdList=CAId.value;			
+			if(temp>0){
+			lobListUpdate=temp;
+			}
+			else{
+			alert("Please enter LOB");
+			isValidLOBEntry =false;
+			tab.rows[i].cells[1].childNodes[0].focus();
+			return;
+			}
+			if(tab.rows[i].cells[3].childNodes[0].value!=""){
+			businessNameListUpdate=tab.rows[i].cells[3].childNodes[0].value;
+			}
+			else{
+			alert("Please enter Name");
+			isValidNameEntry=false;
+			tab.rows[i].cells[3].childNodes[0].focus();
+			return;
+			}
+			if(tab.rows[i].cells[5].childNodes[0].value!=""){
+			var temp=getDateValue(tab.rows[i].cells[5].childNodes[0].value);
+			if(temp>currentdate){
+			alert("Date Of Registration should not be future date ");
+			tab.rows[i].cells[5].childNodes[0].focus();
+			isValidDateEntry =false;
+			return;
+			}
+			businessDateListUpdate=tab.rows[i].cells[5].childNodes[0].value;			
+			}
+			else{
+			alert("Please enter Date of Registration");
+			tab.rows[i].cells[5].childNodes[0].focus();
+			isValidDateEntry =false;
+			return;
+			}
+			if(dateOfReg>0){
+			businessStatusListUpdate=dateOfReg;
+
+			}
+			else{
+			alert("Please select Staus");	
+			isValidStatusEntry	=false;	
+			tab.rows[i].cells[7].childNodes[0].focus();
+return;			
+			}			
+			if(i==0){			
+			updateColumns =caIdList+"~"+lobListUpdate+"~"+businessNameListUpdate+"~"+businessDateListUpdate+"~"+businessStatusListUpdate+",";
+var temp={};
+ temp[businessNameListUpdate]=lobListUpdate+"="+businessStatusListUpdate;
+lobListObject.push(temp);
+			
+			}
+			else{
+			updateColumns = updateColumns+caIdList+"~"+lobListUpdate+"~"+businessNameListUpdate+"~"+businessDateListUpdate+"~"+businessStatusListUpdate+",";
+var temp={};
+temp[businessNameListUpdate]=lobListUpdate+"="+businessStatusListUpdate;
+lobListObject.push(temp);			
+}
+			}
+			else{			
+			var type=tab.rows[i].cells[1].childNodes[0];				
+			var temp = type.options[type.selectedIndex].value;				
+			var textOftemp1=tab.rows[i].cells[1].childNodes[0].value;
+			var lob=	tab.rows[i].cells[3].childNodes[0].value;			
+			var businessName=tab.rows[i].cells[3].childNodes[0].value;			
+			var type1=tab.rows[i].cells[7].childNodes[0];				
+			var dateOfReg = type1.options[type1.selectedIndex].value;
+				if(temp>0){
+			lobList=temp;
+			}
+			else{
+			alert("Please enter LOB");
+			isValidLOBEntry =false;
+			tab.rows[i].cells[1].childNodes[0].focus();
+			return;
+			}
+			if(tab.rows[i].cells[3].childNodes[0].value!=""){
+			businessNameList=tab.rows[i].cells[3].childNodes[0].value;
+			}
+			else{
+			alert("Please enter Name");
+			isValidNameEntry=false;
+			tab.rows[i].cells[3].childNodes[0].focus();
+			return;
+			}
+			if(tab.rows[i].cells[5].childNodes[0].value!=""){
+			var temp=getDateValue(tab.rows[i].cells[5].childNodes[0].value);
+			if(temp>currentdate){
+			alert("Date Of Registration should not be future date ");
+			tab.rows[i].cells[5].childNodes[0].focus();
+			isValidDateEntry =false;
+			return;
+			}
+			businessDateList=tab.rows[i].cells[5].childNodes[0].value;				
+			}
+			else{
+			alert("Please enter Date of Registration");
+			tab.rows[i].cells[5].childNodes[0].focus();
+			isValidDateEntry =false;
+			return;
+			}
+			if(dateOfReg>0){
+			businessStatusList=dateOfReg;
+
+			}
+			else{
+			alert("Please select Staus");	
+			isValidStatusEntry	=false;	
+			tab.rows[i].cells[7].childNodes[0].focus();
+return;			
+			}
+			if(i==0){			
+			mappedColumns = lobList+"~"+businessNameList+"~"+businessDateList+"~"+businessStatusList+",";	
+			var temp={};
+			 temp[businessNameList]=lobList+"="+businessStatusList;
+lobListObject.push(temp);
+			}
+			else{
+			mappedColumns = mappedColumns+lobList+"~"+businessNameList+"~"+businessDateList+"~"+businessStatusList+",";	
+			var temp={};
+			 temp[businessNameList]=lobList+"="+businessStatusList;
+lobListObject.push(temp);
+}
+			}			
+			}
+			
+		}	
+	
+		if(isValidLOBEntry && isValidNameEntry&& isValidDateEntry &&isValidStatusEntry && isValidEntry){		
+		if(checkNameExistence(lobListObject)){
+		document.forms[0].action ="<%=request.getContextPath()%>/hierarchy/jsp/hierLineOfBusinessAction.do?methodName=saveCALineOfBusiness&mappedColumns="+mappedColumns+"&updateColumns="+updateColumns+"&mode="+mode;			
+		document.forms[0].submit();
+}	
+else{
+alert("Insurer name Already entered for the same category");
+return false;
+}	
+		}
+		 
+if(!isValidEntry){
+ alert("More than three entries not allowed for one category");
+ return false; 
+}		
+	
+	}
+
+}
+
+
+function onblurCheck(){
+isValidLobName=true;
+var lobListObject=[];
+ var tab = document.getElementById('lobParamTable');
+	if(tab.rows.length==0){
+	tab = document.getElementById('newLobParamTable');
+	}	
+ if(tab.rows.length>0){
+  var lobList=[];
+   var lobNameList=[];
+ for(var i=0;i<tab.rows.length;i++){ 
+  var temp={};
+temp[tab.rows[i].cells[3].childNodes[0].value]=tab.rows[i].cells[1].childNodes[0].value+"="+tab.rows[i].cells[7].childNodes[0].value;
+lobListObject.push(temp);
+ }
+ if(checkNameExistence(lobListObject)){
+   isValidLobName=true;
+ }
+ else{
+   isValidLobName=false;
+   alert("Insurer name Already entered for the same category");
+   return false;
+ }
+}
+}
+
+function checkNameExistence(lobListObject){
+var isValidName=true;
+var array1=[];
+$.each(lobListObject, function () {
+  $.each(this, function (name, value) { 
+	 array1.push(name + '=' + value);
+	
+   }); 
+});
+var recipientsArray = array1.sort();
+var reportRecipientsDuplicate = [];
+for (var i = 0; i < recipientsArray.length - 1; i++) {
+    if (recipientsArray[i + 1].trim() == recipientsArray[i].trim()) {
+        reportRecipientsDuplicate.push(recipientsArray[i]);
+		isValidName=false;
+		return false;
+    }
+}
+return isValidName;
+}
+
+function chkissueDtm()
+{
+if(document.forms[0].elements['objHierLineOfBusinessDTO.dateOfReg'].value=='')
+document.forms[0].elements['objHierLineOfBusinessDTO.dateOfReg'].value='';
+}
+function disableFields(){
+var mode="<%= mode%>";
+if(mode!=null && !(mode=="view"|| mode=="View")){
+document.getElementById('newLobParamTable').removeAttribute("disabled");
+document.getElementById('lobParamTable').removeAttribute("disabled");
+document.forms[0].btnCancel1.disabled=false;
+document.forms[0].btnSaveDraft.disabled=false;
+}
+else{
+document.forms[0].btnCancel1.disabled=true;
+document.forms[0].btnSaveDraft.disabled=true;
+}
+}
+
+function resetFields(){
+window.close();
+}
+function setStatus(){
+var temp=document.getElementById('lobParamTable');
+if(temp.rows.length!=0){
+
+}
+else{
+document.forms[0].elements["objHierLineOfBusinessDTO.lob"].value="0";
+document.forms[0].elements["objHierLineOfBusinessDTO.businessStatus"].value="1";
+document.forms[0].elements["objHierLineOfBusinessDTO.businessName"].value="";document.forms[0].elements["objHierLineOfBusinessDTO.dateOfReg"].value="";
+document.forms[0].elements["objHierLineOfBusinessDTO.CALOBId"].value="";
+}
+
+}
+function checkAlphaNumeric(obj)
+{
+ var reg = /^[a-z A-Z 0-9 \_]+$/;
+ var strPass = obj.value;
+ var strLength = strPass.length;
+ if (strLength>=1){
+       if (!reg.test(obj.value)){
+            alert("Name should be alphanumaric");
+   obj.focus();
+   obj.value = "";   
+    }
+ }
+}
+
+function setCalendarClick(){
+var tab1 = document.getElementById('lobParamTable');
+for(var i =0 ; i<tab1.rows.length;i++){		
+			if(tab1.rows[i] !=null && tab1.rows[i] !=undefined && tab1.rows[i].cells.length>0)
+			{			
+			var temp=tab1.rows[i].cells[5].childNodes[2]
+				temp.onclick = function () {			
+				displayCalendar(this.parentNode.childNodes[0],'dd/mm/yyyy',this,'','');
+                
+                    };
+			}
+			}
+}
+
+	function checkCharacterNumberWithSpace(obj){
+	var sAlphabet="1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ ";
+		var status = false;
+		if(obj.value=="")
+			{
+	 		status=true;
+			}
+			else{
+				for(var i=0;i<obj.value.length;i++){
+					if(sAlphabet.indexOf(obj.value.charAt(i)) == "-1"){
+					obj.value = obj.value.substring(0,i) + obj.value.substring(i+1, obj.value.length);
+					}
+
+				}
+			}
+	}
+	
+	function checkLobType(obj){	
+isValidEntry=true;
+ if(isValidEntry){
+ var tab = document.getElementById('lobParamTable');
+	if(tab.rows.length==0){
+	tab = document.getElementById('newLobParamTable');
+	}	
+ if(tab.rows.length>0){
+  var lobList=[];
+ for(var i=0;i<tab.rows.length;i++){
+ 
+  lobList.push(tab.rows[i].cells[1].childNodes[0].value);
+ } 
+ if(checkLOBArray(lobList)){
+ isValidEntry=true;
+ }
+ else{
+  isValidEntry=false;
+ alert("More than three entries not allowed for one category");
+ return; 
+ }
+ }
+ }
+ if(isValidEntry){
+var lobType=obj.value;
+var url="<%=request.getContextPath()%>/hierarchy/jsp/hierLineOfBusinessAction.do?methodName=getLOBCount&lobType="					+ lobType;
+			$.ajax({
+						url : url,
+						type : 'GET',
+						async : true,
+						success : function(response) {
+							if (response == "3") {
+								if (tab.rows.length != 9) {
+									isValidEntry = false;
+									alert("More than three entries not allowed for one category");
+									return;
+								}
+							}
+						}
+					});
+		}
+	}
+
+	function checkLOBArray(lobArray) {
+		var count = 0;
+		var breakLoop = true;
+		if (breakLoop) {
+			for (var i = 0; i < lobArray.length; i++) {
+				for (var j = 0; j < lobArray.length; j++) {
+					if (parseInt(lobArray[i]) == parseInt(lobArray[j])) {
+						count++;
+					}
+				}
+				if (count <= 3) {
+					count = 0;
+				} else {
+					breakLoop = false;
+				}
+			}
+		}
+		return breakLoop;
+	}
+isValidLobName=true;
+</script>
+
+
+<body onload="setCalendarClick();setStatus();disableFields();">
+
+<html:form  action="/jsp/hierLineOfBusinessAction.do">
+
+<input type="hidden" name="methodName" value="">
+<input type="hidden" name="dbContextId" value="">
+<input type="hidden" name="LayOutId" value="<%=strLayOutId%>">
+<input type="hidden" name="fieldId" value="<%=strFieldId%>">
+<input type="hidden" name="RoleCd" value="<%=strRoleCode%>">
+<input type="hidden" name="ActionLayOutId"  value="<%=strActionLayOutId%>">
+<input type="hidden" name="saveType" value="">
+<input type="hidden" name="oldfieldId" value="">
+<input type="hidden" name="oldLayOutId" value="">
+<input type="hidden" name="licenseID" value="">
+<input type="hidden" name="oldLayOutId" value="">
+
+
+
+<%if(null != strSecurityFlag && strSecurityFlag.trim().equals("N")){ %>
+	<input type="hidden" name="RoleCd" value="<%=strRoleCode%>"/>
+	<input type="hidden" name="accessPermission" value="<%=strAccessprmsn%>"/>
+	<input type="hidden" name="isAccessible" value="<%=isAccessible%>"/>
+<%}%>
+
+ <table cellpadding="0" cellspacing="0" border="0">
+
+		<tr><td class="page_title">
+				 
+	Line of Business</td>
+	
+              </tr>
+		<tr> 
+          <td class="button_top">
+			     <html:button property="btnCancel1"  styleClass="butt" value="Cancel" onmouseover="this.className='buttOver'" onmouseout="this.className='butt'" onclick="resetFields();"/> 
+				 <html:button property="btnSaveDraft"  styleClass="butt" value="Save" onmouseover="this.className='buttOver'" onmouseout="this.className='butt'" onclick="saveParameter();"/> 			    
+		   
+		   </td>
+		  
+		   </tr>
+		   
+		   <!-- Added for msg handling - BEGIN-->
+		   <tr><td class="errorblue"> <div id="divID" style="display:block"> 
+                          <%if(null!=cnfrmmsg && cnfrmmsg!=""){%>
+								 <%=cnfrmmsg %>									                     
+                          <%}%>
+						</div></td></tr>   
+
+		<tr>
+		 <td class="error"  id="errors"><html:errors/></td>
+		 <%if(modeOfSave!=null){%>
+		   <tr>
+			  <td class="errorblue"><%= modeOfSave %></td> 
+		   </tr>
+		 <%}%>
+
+		</tr> 
+		<font color="blue">	<b>			
+				<%
+				if(submitresult!=null){%>
+				 <tr>
+				  <td class="errorblue"><%= submitresult %></td> 
+				</tr>
+				<%}%>
+				 </b>
+			</font>
+    <%if(null!=message && message!=""){%>
+	  <tr>
+		<td>
+			<table width="97%" cellpadding="0" cellspacing="0" border="0">
+				<tr>
+					<td class="errorblue"><%= message %></td>
+				</tr>
+			</table>
+		</td>
+	  </tr>
+	  <%}%>
+	   <tr><td class="errorblue">		
+				<%
+				if(duplicateErrMsg!=null && duplicateErrMsg!="")
+				out.println("This License Number already exists for the agent(s) "+duplicateErrMsg);
+				%>
+		</td></tr>
+  <!-- Added for msg handling- END-->
+         <tr> 
+             <td> <table cellpadding="0" cellspacing="0" class="search" id="lobTable">
+            <%  if(!mode.equalsIgnoreCase("NEW")) { 
+						  %>
+		  
+		  <tr> 
+                <td colspan="2"> <table border="0" cellspacing="0" cellpadding="0" class="data_table" id="lobParamTable" disabled="disabled">
+				<logic:iterate id="mapItem" name="hierLineOFBusinessForm" property="objHierLineOfBusinessDTOLst">
+				 <logic:notEmpty id="mapItem" name="hierLineOFBusinessForm" property="objHierLineOfBusinessDTOLst" >
+              <tr> 
+            
+                     <td width="7%">LOB <span class="mandatory"> * </span></td> 
+                   	<td> 
+			     		 <html:select name="mapItem"  property="lob" onchange="checkLobType(this)">
+                           <html:option value="0">--Select--</html:option>
+						   <logic:notEmpty name="mapItem" property="arrLob" >
+						   <html:optionsCollection name="mapItem" property="arrLob"  value="id" label="desc" />	  
+							</logic:notEmpty>						   
+      					  </html:select>
+					</td>
+					 <td width="7%">Name <span class="mandatory"> * </span></td>
+					 <td>
+					   <html:text  styleClass="text" size="25" maxlength="40"  name="mapItem" property="businessName" onKeyUp="checkCharacterNumberWithSpace(this);"  onblur="onblurCheck()" /> 
+					   </td>
+					   	<td width="15%">Date of Registration<span class="mandatory"> * </span></td>
+			<td><html:text name="mapItem" property="dateOfReg" styleClass="text"  onkeypress="chkNumic(this);javascript:maskDate(this);" onKeyUp="chkNumic(this)"  onblur="checkDateNonNumeric(this);" maxlength="10" />
+			<a href onclick="displayCalendar(document.forms[0].elements['dateOfReg'],'dd/mm/yyyy',this,'','')">
+						<img src="<%=request.getContextPath()%>/jsp/pss/images/cal.gif" style="border:0px" width="15" height="15"></a>
+	</td>
+					
+	 <td width="7%">Status <span class="mandatory"> * </span></td>
+                   
+					<td> 
+			     		 <html:select name="mapItem"  property="businessStatus">
+                           <html:option value="0">--Select--</html:option>
+						   <logic:notEmpty name="mapItem" property="arrStatus" >
+						   <html:optionsCollection name="mapItem" property="arrStatus"  value="id" label="desc" />	  
+							</logic:notEmpty>						   
+      					  </html:select>
+					</td>
+				 
+					
+					<td style="display:none">
+					 <html:text  styleClass="text" size="25" maxlength="40"  name="mapItem" property="CALOBId" /> 
+	  
+	 </td>
+					
+	 <td class="btn">
+			     <html:button property="btnCancel3"  styleClass="butt" value="Add" onmouseover="this.className='buttOver'" onmouseout="this.className='butt'" onclick="fnAddLOBRow();"/> </td>
+                     </tr>
+					 </logic:notEmpty>
+					 
+ </logic:iterate>
+            </table>
+             </td>
+			</tr>
+			<%}%>
+			   
+		  
+		  <tr> 
+                <td colspan="2"> <table border="0" cellspacing="0" cellpadding="0" class="data_table" id="newLobParamTable" disabled="disabled">				 
+              <logic:empty id="hierLineOFBusinessForm" name="hierLineOFBusinessForm" property="objHierLineOfBusinessDTOLst" >
+			  
+			  <tr> 
+            
+                     <td width="7%">LOB <span class="mandatory"> * </span></td> 
+                   	<td> 
+			     		 <html:select name="hierLineOFBusinessForm"  property="objHierLineOfBusinessDTO.lob" onchange="checkLobType(this)">
+                           <html:option value="0">--Select--</html:option>
+						   <logic:notEmpty name="hierLineOFBusinessForm" property="objHierLineOfBusinessDTO.arrLob" >
+						   <html:optionsCollection name="hierLineOFBusinessForm" property="objHierLineOfBusinessDTO.arrLob"  value="id" label="desc" />	  
+							</logic:notEmpty>						   
+      					  </html:select>
+					</td>
+					 <td width="7%">Name <span class="mandatory"> * </span></td>
+					 <td>
+					   <html:text  styleClass="text" size="25" maxlength="40"  name="hierLineOFBusinessForm" property="objHierLineOfBusinessDTO.businessName" onKeyUp="checkCharacterNumberWithSpace(this);" onblur="onblurCheck()" /> 
+					   </td>
+					   	<td width="15%">Date of Registration<span class="mandatory"> * </span></td>
+			<td><html:text name="hierLineOFBusinessForm" property="objHierLineOfBusinessDTO.dateOfReg" styleClass="text"  onkeypress="chkNumic(this);javascript:maskDate(this);" onKeyUp="chkNumic(this)" onblur="checkDateNonNumeric(this);" maxlength="10"/>
+			<a href onclick="displayCalendar(document.forms[0].elements['objHierLineOfBusinessDTO.dateOfReg'],'dd/mm/yyyy',this,'','')">
+						<img src="<%=request.getContextPath()%>/jsp/pss/images/cal.gif" style="border:0px" width="15" height="15"></a>
+	</td>
+					
+	 <td width="7%">Status <span class="mandatory"> * </span></td>
+                   
+					<td> 
+			     		 <html:select name="hierLineOFBusinessForm"  property="objHierLineOfBusinessDTO.businessStatus">
+                           <html:option value="0">--Select--</html:option>
+						   <logic:notEmpty name="hierLineOFBusinessForm" property="objHierLineOfBusinessDTO.arrStatus" >
+						   <html:optionsCollection name="hierLineOFBusinessForm" property="objHierLineOfBusinessDTO.arrStatus"  value="id" label="desc" />	  
+							</logic:notEmpty>						   
+      					  </html:select>
+					</td>
+				 
+					
+					<td style="display:none">
+					 <html:text  styleClass="text" size="25" maxlength="40"  name="hierLineOFBusinessForm" property="objHierLineOfBusinessDTO.CALOBId" /> 
+	  
+	 </td>
+					
+	 <td class="btn">
+			     <html:button property="btnAdd"  styleClass="butt" value="Add" onmouseover="this.className='buttOver'" onmouseout="this.className='butt'" onclick="fnAddLOBRow();" /> </td>
+                     </tr>
+					  </logic:empty>
+
+            </table>
+             </td>
+			</tr>
+		
+			</td></tr>
+			<tr>
+				  <td class="section_head">&nbsp;<b>History</b>
+				  </td>
+		    </tr>
+            <table width="100%" border="0" cellspacing="0" cellpadding="0">
+			
+				<tr id="md1" style="display:block;"><td><iframe frameborder="0" width="100%" height="100%" id="CA_InsurerDB" name="CA_InsurerDB" src="<%=request.getContextPath()%>/dashboard/jsp/DashBoardRunTimeAction.do?actionName=showRuntimeDashboard&amp;methodName=getDashBoardRuntime&DBCONTEXTID=<%=dbContextID%>&<%=IDBConstants.DASHBOARD_NAME_REQUEST_PARAMETER%>=CA_InsurerDB"  scrolling="no" ></iframe></td></tr>
+	   
+         </table>
+      
+</table> 
+</html:form>
+</body>
+<head>
+<meta http-equiv="Pragma" content="no-cache">
+</head>
+</html>
+<jsp:include page="commonInclude.jsp" />
